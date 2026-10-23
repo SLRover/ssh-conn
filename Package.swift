@@ -7,7 +7,7 @@ let package = Package(
     name: "ssh-conn",
     targets: [
         .executableTarget(
-            name: "ssh_conn",
+            name: "ssh-conn",
             path: "Sources"
         )
     ]
