@@ -12,9 +12,9 @@ struct ServerConfig {
 
 // MARK: - Парсер конфигурации
 
-func loadConfig(for targetName: String) throws -> ServerConfig {
-    let homeDir = FileManager.default.homeDirectoryForCurrentUser
-    let configURL = homeDir.appendingPathComponent(".ssh-conn.config")
+/// Читает все блоки из файла конфигурации.
+func loadAllConfigs() throws -> [ServerConfig] {
+    let configURL = configFileURL()
 
     guard FileManager.default.fileExists(atPath: configURL.path) else {
         throw NSError(domain: "ssh-conn", code: 1,
@@ -24,8 +24,8 @@ func loadConfig(for targetName: String) throws -> ServerConfig {
     let content = try String(contentsOf: configURL, encoding: .utf8)
     let lines = content.components(separatedBy: .newlines)
 
+    var blocks: [[String: String]] = []
     var currentBlock: [String: String] = [:]
-    var foundConfig: ServerConfig?
 
     for line in lines {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -38,28 +38,30 @@ func loadConfig(for targetName: String) throws -> ServerConfig {
         let value = String(parts[1]).trimmingCharacters(in: .whitespaces)
 
         if key == "Name" {
-            // Если предыдущий блок был нужным сервером — сохраняем его
-            if currentBlock["Name"] == targetName {
-                foundConfig = makeConfig(from: currentBlock)
-                break
+            // Начинаем новый блок — сохраняем предыдущий, если он не пуст
+            if !currentBlock.isEmpty {
+                blocks.append(currentBlock)
             }
-            // Начинаем новый блок
             currentBlock = [key: value]
         } else {
             currentBlock[key] = value
         }
     }
 
-    // Проверка последнего блока
-    if foundConfig == nil, currentBlock["Name"] == targetName {
-        foundConfig = makeConfig(from: currentBlock)
+    if !currentBlock.isEmpty {
+        blocks.append(currentBlock)
     }
 
-    guard let config = foundConfig else {
+    return blocks.compactMap { makeConfig(from: $0) }
+}
+
+/// Ищет конфигурацию конкретного сервера по имени.
+func loadConfig(for targetName: String) throws -> ServerConfig {
+    let all = try loadAllConfigs()
+    guard let config = all.first(where: { $0.name == targetName }) else {
         throw NSError(domain: "ssh-conn", code: 2,
                       userInfo: [NSLocalizedDescriptionKey: "Сервер с именем '\(targetName)' не найден в конфиге"])
     }
-
     return config
 }
 
@@ -75,13 +77,49 @@ func makeConfig(from dict: [String: String]) -> ServerConfig? {
     return ServerConfig(name: name, host: host, port: port, user: user, keyPath: key)
 }
 
+func configFileURL() -> URL {
+    FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".ssh-conn.config")
+}
+
+// MARK: - Вывод таблицы
+
+func printTable(_ configs: [ServerConfig]) {
+    let headers = ["Имя хоста", "Адрес", "Пользователь", "Ключ"]
+
+    // Для каждой строки формируем массив ячеек
+    let rows: [[String]] = configs.map { config in
+        [config.name, config.host, config.user, config.keyPath]
+    }
+
+    // Вычисляем ширину каждого столбца (с учётом заголовка)
+    var widths = headers.map { $0.count }
+    for row in rows {
+        for (i, cell) in row.enumerated() {
+            widths[i] = max(widths[i], cell.count)
+        }
+    }
+
+    // Функция для форматирования строки с паддингом
+    func formatRow(_ cells: [String]) -> String {
+        cells.enumerated().map { (i, cell) in
+            let pad = widths[i] - cell.count
+            return cell + String(repeating: " ", count: pad)
+        }.joined(separator: " | ")
+    }
+
+    print(formatRow(headers))
+    // Разделитель
+    print(widths.map { String(repeating: "-", count: $0) }.joined(separator: "-+-"))
+    for row in rows {
+        print(formatRow(row))
+    }
+}
+
 // MARK: - Запуск SSH
 
 func execSSH(config: ServerConfig) throws -> Never {
-    // Разворачиваем ~ и относительные пути в абсолютный путь к ключу
     let expandedKeyPath = expandPath(config.keyPath)
-
-    // Формируем аргументы для ssh
     let destination = "\(config.user)@\(config.host)"
     let args: [String] = [
         "ssh",
@@ -90,13 +128,9 @@ func execSSH(config: ServerConfig) throws -> Never {
         destination
     ]
 
-    // Преобразуем в C-массив строк
     let cArgs = args.map { strdup($0) } + [nil]
-
-    // execv заменяет текущий процесс на ssh
     execv("/usr/bin/ssh", cArgs)
 
-    // Если execv вернулся — произошла ошибка
     let error = String(cString: strerror(errno))
     throw NSError(domain: "ssh-conn", code: 3,
                   userInfo: [NSLocalizedDescriptionKey: "Не удалось запустить ssh: \(error)"])
@@ -110,27 +144,45 @@ func expandPath(_ path: String) -> String {
     if expandedTilde.hasPrefix("/") {
         return expandedTilde
     }
-    // Относительный путь (например, ./ssh/id_rsa) — считаем относительно домашнего каталога
     return (homeDir as NSString).appendingPathComponent(expandedTilde)
 }
 
 // MARK: - Точка входа
 
+let progName = (CommandLine.arguments.first as NSString?)?.lastPathComponent ?? "ssh-conn"
 let arguments = CommandLine.arguments
 
-guard arguments.count == 2 else {
-    let progName = (arguments.first as NSString?)?.lastPathComponent ?? "ssh-conn"
-    print("Использование: \(progName) <имя_сервера>")
-    print("Пример: \(progName) server1")
+guard arguments.count >= 2 else {
+    print("""
+    Использование:
+      \(progName) <имя_сервера>   — подключиться к серверу
+      \(progName) list            — показать список серверов
+    """)
     exit(1)
 }
 
-let serverName = arguments[1]
+let command = arguments[1]
 
-do {
-    let config = try loadConfig(for: serverName)
-    try execSSH(config: config)
-} catch {
-    print("Ошибка: \(error.localizedDescription)")
-    exit(1)
+switch command {
+case "list":
+    do {
+        let configs = try loadAllConfigs()
+        if configs.isEmpty {
+            print("В конфиге нет ни одного корректного сервера.")
+        } else {
+            printTable(configs)
+        }
+    } catch {
+        print("Ошибка: \(error.localizedDescription)")
+        exit(1)
+    }
+
+default:
+    do {
+        let config = try loadConfig(for: command)
+        try execSSH(config: config)
+    } catch {
+        print("Ошибка: \(error.localizedDescription)")
+        exit(1)
+    }
 }
