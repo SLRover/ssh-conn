@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:ssh-conn}",
+            "name": "Debug ssh-conn",
+            "target": "ssh-conn",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug ssh-conn"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:ssh-conn}",
+            "name": "Release ssh-conn",
+            "target": "ssh-conn",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release ssh-conn"
+        }
+    ]
+}
