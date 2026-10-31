@@ -1,20 +1,14 @@
-# артефакты сборки SwiftPM и Xcode
-/.build
+.build
 /Packages
 DerivedData/
 xcuserdata/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/
-
-# локальный инструментарий разработки, не относящийся к утилите
-.deepseek/
-
-# секреты и локальные конфиги
+.deepseek
+.claude
 .netrc
 *.ssh-conn.config
 .env
-
-# редакторы и ОС
 .DS_Store
 *.swp
 *~
