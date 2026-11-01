@@ -19,6 +19,8 @@ $ ssh-conn prod
 ## Возможности
 
 - `list` — таблица всех серверов;
+- графический интерфейс `ssh-conn-gui` — таблица хостов, поиск, добавление,
+  правка и удаление записей, подключение в Terminal;
 - подключение по имени сервера;
 - `add` / `edit` / `remove` — управление записями, в том числе интерактивно;
 - порт по умолчанию (22) для записей без поля `Port`;
@@ -26,14 +28,58 @@ $ ssh-conn prod
 
 ## Установка
 
-Требуется macOS и Swift 6.4+ (Xcode 26 / Command Line Tools).
+Требуется macOS 14+ и Swift 6.4+.
+
+### CLI
+
+Для сборки CLI достаточно Command Line Tools:
 
 ```bash
-swift build -c release
+swift build -c release --product ssh-conn
 install -m 755 .build/release/ssh-conn /usr/local/bin/ssh-conn
 ```
 
 Без установки можно запускать через SwiftPM: `swift run ssh-conn list`.
+
+### GUI
+
+Для сборки графического интерфейса нужен установленный Xcode: начиная с SDK
+macOS 26 SwiftUI использует макросы, плагины которых не входят в Command Line
+Tools. Если Xcode установлен в нестандартном месте, укажите его через
+`DEVELOPER_DIR`.
+
+```bash
+# запуск из исходников
+swift run ssh-conn-gui
+
+# сборка приложения build/ssh-conn.app
+Scripts/build-app.sh
+open build/ssh-conn.app
+```
+
+### Дистрибутив (DMG)
+
+```bash
+Scripts/build-dmg.sh          # build/ssh-conn-1.0.dmg
+open build/ssh-conn-1.0.dmg
+```
+
+Скрипт собирает приложение, проверяет подпись и создаёт сжатый образ с
+`ssh-conn.app` и ярлыком `Applications`; контрольная сумма и содержимое образа
+проверяются автоматически. Аргумент `debug`/`release` выбирает конфигурацию
+(по умолчанию `release`).
+
+По умолчанию приложение подписано ad-hoc, поэтому на другом Mac Gatekeeper
+предупредит о неизвестном разработчике. Для распространения подпишите
+приложение сертификатом Developer ID и нотаризуйте образ (нужен Xcode с
+`notarytool`):
+
+```bash
+CODESIGN_IDENTITY="Developer ID Application: Имя (TEAMID)" \
+NOTARIZE=1 APPLE_ID="you@example.com" TEAM_ID="TEAMID" \
+NOTARY_PASSWORD="app-specific-password" \
+Scripts/build-dmg.sh
+```
 
 ## Конфигурация
 
@@ -108,6 +154,25 @@ ssh-conn help                    — показать справку
 отсутствие обязательного поля — ошибка (удобно для скриптов). Если файл ключа
 не существует, выводится предупреждение, но запись всё равно сохраняется.
 
+## Графический интерфейс
+
+`ssh-conn-gui` — приложение на SwiftUI, которое работает с тем же файлом
+конфигурации (переменная `SSH_CONN_CONFIG` учитывается):
+
+- таблица хостов с поиском по имени, адресу и пользователю;
+- добавление, изменение и удаление записей с проверкой полей и уникальности имени;
+- подключение двойным кликом по строке или кнопкой в панели инструментов —
+  SSH-сессия открывается в Terminal;
+- обновление списка после внешних правок файла (вручную и при возврате в окно),
+  путь к конфигу и кнопка «Показать в Finder» в строке состояния;
+- предупреждение, если файл приватного ключа не найден, и выбор ключа через
+  стандартный диалог.
+
+При первом подключении macOS может запросить разрешение на управление Terminal
+(приложение использует AppleScript). Если разрешение не выдано, открывается
+временный `.command`-файл в Terminal; если и это не удалось, команда `ssh`
+показывается в сообщении об ошибке.
+
 ## Примеры
 
 ```bash
@@ -141,12 +206,25 @@ ssh-conn remove staging --force
 
 ```
 Sources/
-├── main.swift          # точка входа и разбор команды
-├── CLI.swift           # справка, разбор опций, команды, вывод таблицы
-├── ConfigStore.swift   # чтение и правка файла конфигурации
-├── ServerConfig.swift  # модель записи, разбор блоков, путь к конфигу
-└── SSH.swift           # запуск ssh
+├── SSHConnCore/        # общая библиотека
+│   ├── ServerConfig.swift  # модель записи, разбор блоков, путь к конфигу
+│   ├── ConfigStore.swift   # чтение и правка файла конфигурации
+│   └── SSH.swift           # запуск ssh из CLI
+├── SSHConnCLI/         # консольная утилита
+│   ├── main.swift          # точка входа и разбор команды
+│   └── CLI.swift           # справка, разбор опций, команды, вывод таблицы
+└── SSHConnGUI/         # приложение SwiftUI
+    ├── SSHConnGUIApp.swift # точка входа приложения
+    ├── HostListModel.swift # состояние списка и валидация записей
+    ├── HostListView.swift  # окно со списком хостов
+    ├── HostEditorView.swift # форма добавления и редактирования
+    └── TerminalLauncher.swift # подключение через Terminal
+
+Scripts/
+├── build-app.sh        # сборка build/ssh-conn.app
+└── build-dmg.sh        # упаковка приложения в build/ssh-conn-<версия>.dmg
 ```
 
-Сборка: `swift build`. Запуск из VS Code описан в `.vscode/launch.json`
-(конфигурации Debug и Release). Автотестов пока нет.
+Сборка: `swift build --product ssh-conn` для CLI и `Scripts/build-app.sh` для
+приложения. Запуск из VS Code описан в `.vscode/launch.json` (конфигурации Debug
+и Release для CLI и GUI). Автотестов пока нет.

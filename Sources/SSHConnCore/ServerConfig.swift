@@ -2,27 +2,37 @@ import Foundation
 
 // MARK: - Ошибки
 
-struct SSHConnError: LocalizedError {
-    let message: String
+public struct SSHConnError: LocalizedError {
+    public let message: String
 
-    init(_ message: String) { self.message = message }
+    public init(_ message: String) { self.message = message }
 
-    var errorDescription: String? { message }
+    public var errorDescription: String? { message }
 }
 
 // MARK: - Модель конфигурации
 
-struct ServerConfig {
-    static let defaultPort = 22
+public struct ServerConfig: Identifiable, Sendable, Hashable {
+    public static let defaultPort = 22
 
-    var name: String
-    var host: String
-    var port: Int
-    var user: String
-    var keyPath: String
+    public var name: String
+    public var host: String
+    public var port: Int
+    public var user: String
+    public var keyPath: String
+
+    public var id: String { name }
+
+    public init(name: String, host: String, port: Int, user: String, keyPath: String) {
+        self.name = name
+        self.host = host
+        self.port = port
+        self.user = user
+        self.keyPath = keyPath
+    }
 
     /// Строки записи в формате файла конфигурации.
-    var blockLines: [String] {
+    public var blockLines: [String] {
         ["Name \(name)", "Host \(host)", "Port \(port)", "User \(user)", "Key \(keyPath)"]
     }
 }
@@ -98,7 +108,7 @@ func parseBlocks(_ lines: [String]) -> [ConfigBlock] {
 // MARK: - Путь к конфигурации
 
 /// Путь к файлу конфигурации; переопределяется переменной окружения `SSH_CONN_CONFIG`.
-func configFileURL() -> URL {
+public func configFileURL() -> URL {
     let override = ProcessInfo.processInfo.environment["SSH_CONN_CONFIG"]?
         .trimmingCharacters(in: .whitespaces)
 

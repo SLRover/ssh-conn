@@ -19,6 +19,26 @@
             "target": "ssh-conn",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release ssh-conn"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:ssh-conn}",
+            "name": "Debug ssh-conn-gui",
+            "target": "ssh-conn-gui",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug ssh-conn-gui"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:ssh-conn}",
+            "name": "Release ssh-conn-gui",
+            "target": "ssh-conn-gui",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release ssh-conn-gui"
         }
     ]
 }

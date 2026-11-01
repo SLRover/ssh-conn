@@ -13,3 +13,4 @@ xcuserdata/
 *.swp
 *~
 .idea/
+build/

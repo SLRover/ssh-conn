@@ -6,7 +6,7 @@ import Darwin
 // MARK: - Запуск SSH
 
 /// Заменяет текущий процесс клиентом `ssh` (бинарник ищется по `PATH`).
-func execSSH(config: ServerConfig) throws -> Never {
+public func execSSH(config: ServerConfig) throws -> Never {
     let args = [
         "ssh",
         "-i", expandPath(config.keyPath),
@@ -21,7 +21,7 @@ func execSSH(config: ServerConfig) throws -> Never {
 }
 
 /// Разворачивает `~` в домашний каталог, а относительный путь — относительно домашнего каталога.
-func expandPath(_ path: String) -> String {
+public func expandPath(_ path: String) -> String {
     let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
     let expandedTilde = NSString(string: path).expandingTildeInPath
 

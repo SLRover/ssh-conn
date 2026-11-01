@@ -1,4 +1,5 @@
 import Foundation
+import SSHConnCore
 #if canImport(Darwin)
 import Darwin
 #endif

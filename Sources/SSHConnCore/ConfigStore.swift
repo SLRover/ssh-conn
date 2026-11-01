@@ -2,14 +2,14 @@ import Foundation
 
 // MARK: - Файл конфигурации
 
-struct ConfigStore {
-    let url: URL
+public struct ConfigStore {
+    public let url: URL
 
-    init(url: URL = configFileURL()) {
+    public init(url: URL = configFileURL()) {
         self.url = url
     }
 
-    var exists: Bool {
+    public var exists: Bool {
         FileManager.default.fileExists(atPath: url.path)
     }
 
@@ -25,11 +25,11 @@ struct ConfigStore {
         parseBlocks(try readLines())
     }
 
-    func servers() throws -> [ServerConfig] {
+    public func servers() throws -> [ServerConfig] {
         try blocks().compactMap { $0.serverConfig }
     }
 
-    func server(named name: String) throws -> ServerConfig {
+    public func server(named name: String) throws -> ServerConfig {
         guard let config = try servers().first(where: { $0.name == name }) else {
             throw SSHConnError("Сервер с именем '\(name)' не найден в конфиге")
         }
@@ -37,7 +37,7 @@ struct ConfigStore {
     }
 
     /// Дописывает запись в конец файла, создавая файл при необходимости.
-    func append(_ config: ServerConfig) throws {
+    public func append(_ config: ServerConfig) throws {
         if !exists {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(),
@@ -58,7 +58,7 @@ struct ConfigStore {
     }
 
     /// Меняет отдельные поля записи, сохраняя остальные строки файла без изменений.
-    func update(named name: String, changes: [(key: String, value: String)]) throws {
+    public func update(named name: String, changes: [(key: String, value: String)]) throws {
         var lines = try readLines()
         let target = try block(named: name, in: lines)
         var blockLines = Array(lines[target.range])
@@ -76,7 +76,7 @@ struct ConfigStore {
     }
 
     /// Удаляет запись вместе с занимаемыми ею строками.
-    func remove(named name: String) throws {
+    public func remove(named name: String) throws {
         var lines = try readLines()
         let target = try block(named: name, in: lines)
         lines.removeSubrange(target.range)

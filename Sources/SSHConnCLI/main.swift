@@ -1,4 +1,5 @@
 import Foundation
+import SSHConnCore
 
 /// Разбирает аргументы командной строки и выполняет команду.
 func runCLI(progName: String, arguments: [String]) throws {
