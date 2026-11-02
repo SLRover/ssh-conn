@@ -1,5 +1,7 @@
 # ssh-conn
 
+[English version](README_EN.md) | Русский
+
 ![ssh-conn](Assets/ssh-conn-brand/banner/svg/banner-social-dark.svg)
 
 Консольная утилита для быстрого подключения к SSH-серверам: все параметры
