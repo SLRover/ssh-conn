@@ -180,6 +180,9 @@ does not exist, a warning is printed but the record is still saved.
   kept in the config even before it has hosts, with removal of empty groups via
   the context menu;
 - a host table with search by name, address, group and user;
+- drag-and-drop of a host into a group: grab the handle in the "Name" column and
+  drop the host onto a sidebar group or onto "No group" to ungroup it; that item
+  stays visible while the config has groups, so it is always a drop target;
 - adding, editing and removing records with field and name-uniqueness validation;
   the editor lets you type a new group or pick an existing one, and a new record
   pre-fills the group selected in the sidebar;

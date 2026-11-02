@@ -13,6 +13,7 @@ struct HostListView: View {
     @State private var pendingDeletion: ServerConfig?
     @State private var isAddingGroup = false
     @State private var pendingGroupDeletion: String?
+    @State private var dropTarget: GroupFilter?
     @State private var errorState: ErrorState?
 
     /// Ошибка, которую нужно показать в отдельном окне.
@@ -50,6 +51,9 @@ struct HostListView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        // Без подложки у тулбара материал сайдбара идёт от самого верха окна,
+        // и вертикальная граница остаётся одной линией без ступеньки у заголовка.
+        .toolbarBackground(.hidden, for: .windowToolbar)
         .frame(minWidth: 800, minHeight: 400)
         .toolbar { toolbarContent }
         .sheet(item: $editorDraft) { draft in
@@ -113,26 +117,38 @@ struct HostListView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             List(selection: $groupFilter) {
-                row(GroupFilter.all.title, systemImage: "tray.full", count: model.count(in: .all))
+                row(GroupFilter.all.title, systemImage: "tray.full", count: model.count(in: .all), filter: .all)
                     .tag(GroupFilter.all)
 
                 Section("Группы") {
                     ForEach(model.groupNames, id: \.self) { name in
-                        row(name, systemImage: "folder", count: model.count(in: .group(name)))
-                            .tag(GroupFilter.group(name))
-                            .contextMenu {
-                                Button("Удалить группу…", role: .destructive) {
-                                    pendingGroupDeletion = name
-                                }
-                                .disabled(model.count(in: .group(name)) > 0)
+                        row(
+                            name,
+                            systemImage: "folder",
+                            count: model.count(in: .group(name)),
+                            filter: .group(name),
+                            acceptsDrop: true
+                        )
+                        .tag(GroupFilter.group(name))
+                        .contextMenu {
+                            Button("Удалить группу…", role: .destructive) {
+                                pendingGroupDeletion = name
                             }
+                            .disabled(model.count(in: .group(name)) > 0)
+                        }
                     }
                 }
 
-                if model.hasUngroupedHosts {
+                if showsUngroupedRow {
                     Section {
-                        row(GroupFilter.ungrouped.title, systemImage: "tray", count: model.count(in: .ungrouped))
-                            .tag(GroupFilter.ungrouped)
+                        row(
+                            GroupFilter.ungrouped.title,
+                            systemImage: "tray",
+                            count: model.count(in: .ungrouped),
+                            filter: .ungrouped,
+                            acceptsDrop: true
+                        )
+                        .tag(GroupFilter.ungrouped)
                     }
                 }
             }
@@ -161,9 +177,29 @@ struct HostListView: View {
         }
     }
 
-    private func row(_ title: String, systemImage: String, count: Int) -> some View {
-        Label(title, systemImage: systemImage)
+    @ViewBuilder
+    private func row(
+        _ title: String,
+        systemImage: String,
+        count: Int,
+        filter: GroupFilter,
+        acceptsDrop: Bool = false
+    ) -> some View {
+        let label = Label(title, systemImage: systemImage)
             .badge(count)
+
+        if acceptsDrop {
+            label
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .modifier(
+                    GroupDropTarget(filter: filter, dropTarget: $dropTarget) { items in
+                        moveHosts(items, to: filter)
+                    }
+                )
+        } else {
+            label
+        }
     }
 
     private var searchBar: some View {
@@ -235,8 +271,13 @@ struct HostListView: View {
 
     private var hostTable: some View {
         Table(displayedHosts, selection: $selection) {
-            TableColumn("Имя", value: \.name)
-                .width(min: 90, ideal: 120)
+            TableColumn("Имя") { server in
+                HStack(spacing: 6) {
+                    dragHandle(for: server)
+                    Text(server.name)
+                }
+            }
+            .width(min: 90, ideal: 120)
             TableColumn("Адрес", value: \.host)
                 .width(min: 110, ideal: 170)
             TableColumn("Порт") { server in
@@ -261,6 +302,18 @@ struct HostListView: View {
                 connect(server)
             }
         }
+    }
+
+    /// Ручка, за которую хост перетаскивается в группу в боковой панели.
+    /// Остальная часть строки остаётся обычной, чтобы клик выделял хост.
+    private func dragHandle(for server: ServerConfig) -> some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .frame(width: 14, height: 16)
+            .contentShape(Rectangle())
+            .draggable(HostDragItem(name: server.name))
+            .help("Перетащите хост в группу в боковой панели")
     }
 
     private var footer: some View {
@@ -348,6 +401,12 @@ struct HostListView: View {
         return displayedHosts.first { $0.id == selection }
     }
 
+    /// Пункт «Без группы» служит и целью для перетаскивания, поэтому он виден,
+    /// пока в конфиге есть хоть одна группа.
+    private var showsUngroupedRow: Bool {
+        model.hasUngroupedHosts || model.hasGroupedHosts
+    }
+
     private var hostCountLabel: String {
         let count = displayedHosts.count
         if model.searchText.trimmed.isEmpty {
@@ -395,6 +454,29 @@ struct HostListView: View {
         }
     }
 
+    /// Переносит перетащенные хосты в выбранную группу.
+    private func moveHosts(_ items: [HostDragItem], to filter: GroupFilter) -> Bool {
+        guard filter != .all else { return false }
+
+        let snapshot = model.hosts
+        var moved = false
+        for item in items {
+            guard let server = snapshot.first(where: { $0.name == item.name }) else { continue }
+            do {
+                if try model.move(server, to: filter.groupName) {
+                    moved = true
+                }
+            } catch {
+                errorState = ErrorState(
+                    title: "Не удалось переместить хост",
+                    message: error.localizedDescription
+                )
+                break
+            }
+        }
+        return moved
+    }
+
     private func deletePending() {
         guard let server = pendingDeletion else { return }
         do {
@@ -416,5 +498,30 @@ struct HostListView: View {
             errorState = ErrorState(title: "Не удалось удалить группу", message: error.localizedDescription)
         }
         pendingGroupDeletion = nil
+    }
+}
+
+/// Приём перетаскиваемых хостов строкой группы с подсветкой цели.
+private struct GroupDropTarget: ViewModifier {
+    let filter: GroupFilter
+    @Binding var dropTarget: GroupFilter?
+    let perform: ([HostDragItem]) -> Bool
+
+    func body(content: Content) -> some View {
+        content
+            .dropDestination(for: HostDragItem.self) { items, _ in
+                perform(items)
+            } isTargeted: { isTargeted in
+                if isTargeted {
+                    dropTarget = filter
+                } else if dropTarget == filter {
+                    dropTarget = nil
+                }
+            }
+            .background {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(dropTarget == filter ? Color.accentColor.opacity(0.2) : Color.clear)
+            }
+            .animation(.easeOut(duration: 0.12), value: dropTarget)
     }
 }

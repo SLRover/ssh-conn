@@ -125,6 +125,8 @@ final class HostListModel {
 
     var hasUngroupedHosts: Bool { hosts.contains { $0.group == nil } }
 
+    var hasGroupedHosts: Bool { hosts.contains { $0.group != nil } }
+
     func count(in filter: GroupFilter) -> Int {
         hosts.count { matches($0, filter) }
     }
@@ -206,6 +208,23 @@ final class HostListModel {
     func delete(_ config: ServerConfig) throws {
         try store.remove(named: config.name)
         reload()
+    }
+
+    /// Переносит хост в группу; `nil` убирает его из группы.
+    /// Возвращает `true`, если конфиг действительно изменился.
+    @discardableResult
+    func move(_ config: ServerConfig, to group: String?) throws -> Bool {
+        let target = group?.trimmed ?? ""
+        let newGroup = target.isEmpty ? nil : target
+        guard newGroup != config.group else { return false }
+
+        if let newGroup {
+            try store.update(named: config.name, changes: [("Group", newGroup)])
+        } else {
+            try store.update(named: config.name, changes: [], removingKeys: ["Group"])
+        }
+        reload()
+        return true
     }
 
     private func matches(_ server: ServerConfig, _ filter: GroupFilter) -> Bool {

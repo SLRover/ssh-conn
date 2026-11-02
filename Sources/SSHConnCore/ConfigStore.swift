@@ -137,12 +137,28 @@ public struct ConfigStore {
             if let index = blockLines.firstIndex(where: { parseEntry($0)?.key == key }) {
                 blockLines[index] = "\(key) \(value)"
             } else {
-                blockLines.append("\(key) \(value)")
+                blockLines.insert("\(key) \(value)", at: insertionIndex(for: key, in: blockLines))
             }
         }
 
         lines.replaceSubrange(target.range, with: blockLines)
         try write(lines)
+    }
+
+    /// Порядок полей в записи: недостающий ключ ставится после предыдущего по порядку.
+    private static let fieldOrder = ["Name", "Group", "Host", "Port", "User", "Key"]
+
+    private func insertionIndex(for key: String, in blockLines: [String]) -> Int {
+        guard let rank = Self.fieldOrder.firstIndex(of: key) else { return blockLines.count }
+
+        let index = blockLines.firstIndex { line in
+            guard let existing = parseEntry(line)?.key,
+                  let existingRank = Self.fieldOrder.firstIndex(of: existing) else {
+                return false
+            }
+            return existingRank > rank
+        }
+        return index ?? blockLines.count
     }
 
     /// Удаляет запись вместе с занимаемыми ею строками.
