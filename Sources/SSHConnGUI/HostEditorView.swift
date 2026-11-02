@@ -11,11 +11,18 @@ struct HostEditorView: View {
     @State private var errorMessage: String?
 
     private let hosts: [ServerConfig]
+    private let groups: [String]
     private let onSave: (HostDraft) throws -> Void
 
-    init(draft: HostDraft, hosts: [ServerConfig], onSave: @escaping (HostDraft) throws -> Void) {
+    init(
+        draft: HostDraft,
+        hosts: [ServerConfig],
+        groups: [String],
+        onSave: @escaping (HostDraft) throws -> Void
+    ) {
         _draft = State(initialValue: draft)
         self.hosts = hosts
+        self.groups = groups
         self.onSave = onSave
     }
 
@@ -28,6 +35,21 @@ struct HostEditorView: View {
 
             Form {
                 TextField("Имя", text: $draft.name, prompt: Text("prod"))
+                TextField("Группа", text: $draft.group, prompt: Text("Без группы"))
+                if !groups.isEmpty {
+                    HStack {
+                        Spacer()
+                        Menu("Выбрать группу…") {
+                            Button("Без группы") { draft.group = "" }
+                            Divider()
+                            ForEach(groups, id: \.self) { name in
+                                Button(name) { draft.group = name }
+                            }
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    }
+                }
                 TextField("Адрес хоста", text: $draft.host, prompt: Text("203.0.113.10"))
                 TextField("Порт", text: $draft.port, prompt: Text("\(ServerConfig.defaultPort)"))
                 TextField("Пользователь", text: $draft.user, prompt: Text("root"))

@@ -3,39 +3,48 @@ import Combine
 import SSHConnCore
 import SwiftUI
 
-/// Окно со списком хостов и действиями над ними.
+/// Окно со списком хостов, сгруппированных по логическим группам.
 struct HostListView: View {
     @Bindable var model: HostListModel
 
+    @State private var groupFilter: GroupFilter? = .all
     @State private var selection: ServerConfig.ID?
     @State private var editorDraft: HostDraft?
     @State private var pendingDeletion: ServerConfig?
     @State private var connectionError: String?
 
+    private var activeFilter: GroupFilter { groupFilter ?? .all }
+    private var displayedHosts: [ServerConfig] { model.hosts(in: activeFilter) }
+
     var body: some View {
-        VStack(spacing: 0) {
-            if let loadError = model.loadError {
-                Label(loadError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
-                    .background(Color.red.opacity(0.1))
+        NavigationSplitView {
+            sidebar
+        } detail: {
+            VStack(spacing: 0) {
+                if let loadError = model.loadError {
+                    Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(Color.red.opacity(0.1))
+                }
+
+                if !model.hosts.isEmpty {
+                    searchBar
+                }
+
+                content
+
+                Divider()
+                footer
             }
-
-            if !model.hosts.isEmpty {
-                searchBar
-            }
-
-            content
-
-            Divider()
-            footer
         }
-        .frame(minWidth: 620, minHeight: 360)
+        .navigationSplitViewStyle(.balanced)
+        .frame(minWidth: 800, minHeight: 400)
         .toolbar { toolbarContent }
         .sheet(item: $editorDraft) { draft in
-            HostEditorView(draft: draft, hosts: model.hosts) { edited in
+            HostEditorView(draft: draft, hosts: model.hosts, groups: model.groupNames) { edited in
                 try model.save(edited)
                 selection = edited.name.trimmed
             }
@@ -68,13 +77,58 @@ struct HostListView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.reload()
         }
+        .onChange(of: groupFilter) { _, _ in
+            selection = nil
+        }
+        .onChange(of: model.groupNames) { _, _ in
+            normalizeGroupFilter()
+        }
+        .onChange(of: model.hasUngroupedHosts) { _, _ in
+            normalizeGroupFilter()
+        }
+    }
+
+    private var sidebar: some View {
+        List(selection: $groupFilter) {
+            row(GroupFilter.all.title, systemImage: "tray.full", count: model.count(in: .all))
+                .tag(GroupFilter.all)
+
+            if !model.groupNames.isEmpty {
+                Section("Группы") {
+                    ForEach(model.groupNames, id: \.self) { name in
+                        row(name, systemImage: "folder", count: model.count(in: .group(name)))
+                            .tag(GroupFilter.group(name))
+                    }
+                }
+
+                if model.hasUngroupedHosts {
+                    Section {
+                        row(GroupFilter.ungrouped.title, systemImage: "tray", count: model.count(in: .ungrouped))
+                            .tag(GroupFilter.ungrouped)
+                    }
+                }
+            } else {
+                Section {
+                    Text("Чтобы разделить хосты, укажите группу в редакторе записи.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(min: 170, ideal: 210)
+    }
+
+    private func row(_ title: String, systemImage: String, count: Int) -> some View {
+        Label(title, systemImage: systemImage)
+            .badge(count)
     }
 
     private var searchBar: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("Поиск по имени, адресу или пользователю", text: $model.searchText)
+            TextField("Поиск по имени, адресу, группе или пользователю", text: $model.searchText)
                 .textFieldStyle(.plain)
             if !model.searchText.isEmpty {
                 Button {
@@ -98,8 +152,12 @@ struct HostListView: View {
     private var content: some View {
         if model.hosts.isEmpty {
             emptyState
-        } else if model.filteredHosts.isEmpty {
-            ContentUnavailableView.search(text: model.searchText)
+        } else if displayedHosts.isEmpty {
+            if model.searchText.trimmed.isEmpty {
+                groupEmptyState
+            } else {
+                ContentUnavailableView.search(text: model.searchText)
+            }
         } else {
             hostTable
         }
@@ -115,14 +173,26 @@ struct HostListView: View {
                 Text("Файл \(model.configURL.path) ещё не создан. Добавьте первый хост — файл появится автоматически.")
             }
         } actions: {
-            Button("Добавить хост") { editorDraft = HostDraft() }
+            Button("Добавить хост") { editorDraft = newDraft() }
+                .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var groupEmptyState: some View {
+        ContentUnavailableView {
+            Label("В группе «\(activeFilter.title)» нет хостов", systemImage: "folder")
+        } description: {
+            Text("Добавьте хост в эту группу или выберите другую группу в боковой панели.")
+        } actions: {
+            Button("Добавить хост") { editorDraft = newDraft() }
                 .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var hostTable: some View {
-        Table(model.filteredHosts, selection: $selection) {
+        Table(displayedHosts, selection: $selection) {
             TableColumn("Имя", value: \.name)
                 .width(min: 90, ideal: 120)
             TableColumn("Адрес", value: \.host)
@@ -204,7 +274,7 @@ struct HostListView: View {
 
         ToolbarItem {
             Button {
-                editorDraft = HostDraft()
+                editorDraft = newDraft()
             } label: {
                 Label("Добавить", systemImage: "plus")
             }
@@ -233,19 +303,40 @@ struct HostListView: View {
 
     private var selectedHost: ServerConfig? {
         guard let selection else { return nil }
-        return model.hosts.first { $0.id == selection }
+        return displayedHosts.first { $0.id == selection }
     }
 
     private var hostCountLabel: String {
-        if model.filteredHosts.count != model.hosts.count {
-            return "Найдено: \(model.filteredHosts.count) из \(model.hosts.count)"
+        let count = displayedHosts.count
+        if model.searchText.trimmed.isEmpty {
+            return "Хостов: \(count)"
         }
-        return "Хостов: \(model.hosts.count)"
+        return "Найдено: \(count) из \(model.count(in: activeFilter))"
+    }
+
+    private func newDraft() -> HostDraft {
+        HostDraft(preselectedGroup: activeFilter.groupName ?? "")
+    }
+
+    private func normalizeGroupFilter() {
+        guard let filter = groupFilter else { return }
+        switch filter {
+        case .all:
+            break
+        case .ungrouped:
+            if !model.hasUngroupedHosts {
+                groupFilter = .all
+            }
+        case .group(let name):
+            if !model.groupNames.contains(name) {
+                groupFilter = .all
+            }
+        }
     }
 
     private func server(in ids: Set<ServerConfig.ID>) -> ServerConfig? {
         guard let id = ids.first else { return nil }
-        return model.hosts.first { $0.id == id }
+        return displayedHosts.first { $0.id == id }
     }
 
     private func connectSelected() {

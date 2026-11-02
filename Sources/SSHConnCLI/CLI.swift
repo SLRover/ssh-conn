@@ -21,6 +21,7 @@ func usage(_ progName: String) -> String {
       --port <порт>    порт SSH (по умолчанию \(ServerConfig.defaultPort))
       --user <имя>     имя пользователя
       --key <путь>     путь к приватному ключу
+      --group <имя>    группа сервера; пустое значение убирает группу (edit)
       --rename <имя>   новое имя сервера (только edit)
       --force          перезаписать существующую запись (add),
                        удалить без подтверждения (remove)
@@ -34,7 +35,7 @@ func usage(_ progName: String) -> String {
 // MARK: - Разбор аргументов
 
 struct CLIArguments {
-    static let valueOptions: Set<String> = ["host", "port", "user", "key", "rename"]
+    static let valueOptions: Set<String> = ["host", "port", "user", "key", "group", "rename"]
     static let booleanFlags: Set<String> = ["force"]
 
     var positionals: [String] = []
@@ -128,6 +129,16 @@ func validatedPort(_ raw: String?) throws -> Int? {
     return port
 }
 
+/// Название группы без пробелов по краям; nil для пустого значения (нет группы).
+func normalizedGroup(_ raw: String?) throws -> String? {
+    guard let raw else { return nil }
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.contains(where: \.isNewline) else {
+        throw SSHConnError("Название группы не должно содержать переводов строки")
+    }
+    return trimmed.isEmpty ? nil : trimmed
+}
+
 func serverName(from arguments: CLIArguments, hint: String) throws -> String {
     guard let name = arguments.positionals.first else {
         throw SSHConnError("Не указано имя сервера. \(hint)")
@@ -185,15 +196,25 @@ func addServer(arguments: [String]) throws {
     guard let key, !key.isEmpty else { throw SSHConnError("Не указан путь к ключу (--key)") }
     let port = try validatedPort(rawPort) ?? ServerConfig.defaultPort
 
+    let group = try normalizedGroup(args.options["group"])
     warnIfKeyMissing(key)
 
     if alreadyExists {
-        try store.update(named: name, changes: [
+        var changes: [(key: String, value: String)] = [
             ("Host", host), ("Port", String(port)), ("User", user), ("Key", key)
-        ])
+        ]
+        var removals: [String] = []
+        if let group {
+            changes.append(("Group", group))
+        } else if args.options["group"] != nil {
+            removals.append("Group")
+        }
+        try store.update(named: name, changes: changes, removingKeys: removals)
         print("Сервер '\(name)' перезаписан.")
     } else {
-        try store.append(ServerConfig(name: name, host: host, port: port, user: user, keyPath: key))
+        try store.append(
+            ServerConfig(name: name, host: host, port: port, user: user, keyPath: key, group: group)
+        )
         print("Сервер '\(name)' добавлен: \(store.url.path)")
     }
 }
@@ -224,14 +245,22 @@ func editServer(arguments: [String]) throws {
     let current = try store.server(named: name)
 
     var changes: [(key: String, value: String)] = []
+    var removals: [String] = []
     var newName = args.options["rename"]
 
     if let host = args.options["host"] { changes.append(("Host", host)) }
     if let port = try validatedPort(args.options["port"]) { changes.append(("Port", String(port))) }
     if let user = args.options["user"] { changes.append(("User", user)) }
     if let key = args.options["key"] { changes.append(("Key", key)) }
+    if let rawGroup = args.options["group"] {
+        if let group = try normalizedGroup(rawGroup) {
+            changes.append(("Group", group))
+        } else {
+            removals.append("Group")
+        }
+    }
 
-    if changes.isEmpty && newName == nil {
+    if changes.isEmpty && newName == nil && removals.isEmpty {
         guard stdinIsTerminal else {
             throw SSHConnError(
                 "Не указаны изменения: используйте --host/--port/--user/--key/--rename или запустите в терминале"
@@ -253,12 +282,12 @@ func editServer(arguments: [String]) throws {
         changes.append(("Name", newName))
     }
 
-    guard !changes.isEmpty else {
+    guard !changes.isEmpty || !removals.isEmpty else {
         print("Изменений нет.")
         return
     }
 
-    try store.update(named: name, changes: changes)
+    try store.update(named: name, changes: changes, removingKeys: removals)
 
     if let key = changes.first(where: { $0.key == "Key" })?.value {
         warnIfKeyMissing(key)
@@ -273,6 +302,9 @@ func interactiveEdit(for config: ServerConfig) -> (changes: [(key: String, value
 
     if let value = prompt("Имя сервера (Enter — \(config.name))"), value != config.name {
         newName = value
+    }
+    if let value = prompt("Группа (Enter — \(config.group ?? "без группы"))"), value != config.group {
+        changes.append(("Group", value))
     }
     if let value = prompt("Адрес хоста (Enter — \(config.host))"), value != config.host {
         changes.append(("Host", value))
@@ -299,9 +331,17 @@ func interactiveEdit(for config: ServerConfig) -> (changes: [(key: String, value
 // MARK: - Вывод таблицы
 
 func printTable(_ configs: [ServerConfig]) {
-    let headers = ["Имя хоста", "Адрес", "Порт", "Пользователь", "Ключ"]
+    let showGroups = configs.contains { $0.group != nil }
+    var headers = ["Имя хоста", "Адрес", "Порт", "Пользователь", "Ключ"]
+    if showGroups {
+        headers.append("Группа")
+    }
     let rows: [[String]] = configs.map { config in
-        [config.name, config.host, String(config.port), config.user, config.keyPath]
+        var row = [config.name, config.host, String(config.port), config.user, config.keyPath]
+        if showGroups {
+            row.append(config.group ?? "")
+        }
+        return row
     }
 
     var widths = headers.map { $0.count }

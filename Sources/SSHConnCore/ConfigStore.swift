@@ -58,10 +58,19 @@ public struct ConfigStore {
     }
 
     /// Меняет отдельные поля записи, сохраняя остальные строки файла без изменений.
-    public func update(named name: String, changes: [(key: String, value: String)]) throws {
+    /// Ключи из `removingKeys` удаляются из блока (например, чтобы убрать группу).
+    public func update(
+        named name: String,
+        changes: [(key: String, value: String)],
+        removingKeys: [String] = []
+    ) throws {
         var lines = try readLines()
         let target = try block(named: name, in: lines)
         var blockLines = Array(lines[target.range])
+
+        for key in removingKeys {
+            blockLines.removeAll { parseEntry($0)?.key == key }
+        }
 
         for (key, value) in changes {
             if let index = blockLines.firstIndex(where: { parseEntry($0)?.key == key }) {

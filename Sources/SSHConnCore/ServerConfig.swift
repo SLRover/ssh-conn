@@ -20,20 +20,28 @@ public struct ServerConfig: Identifiable, Sendable, Hashable {
     public var port: Int
     public var user: String
     public var keyPath: String
+    /// Логическая группа; nil — запись без группы.
+    public var group: String?
 
     public var id: String { name }
 
-    public init(name: String, host: String, port: Int, user: String, keyPath: String) {
+    public init(name: String, host: String, port: Int, user: String, keyPath: String, group: String? = nil) {
         self.name = name
         self.host = host
         self.port = port
         self.user = user
         self.keyPath = keyPath
+        self.group = group
     }
 
     /// Строки записи в формате файла конфигурации.
     public var blockLines: [String] {
-        ["Name \(name)", "Host \(host)", "Port \(port)", "User \(user)", "Key \(keyPath)"]
+        var lines = ["Name \(name)"]
+        if let group, !group.isEmpty {
+            lines.append("Group \(group)")
+        }
+        lines.append(contentsOf: ["Host \(host)", "Port \(port)", "User \(user)", "Key \(keyPath)"])
+        return lines
     }
 }
 
@@ -58,7 +66,8 @@ struct ConfigBlock {
             return nil
         }
         let port = value("Port").flatMap(Int.init) ?? ServerConfig.defaultPort
-        return ServerConfig(name: name, host: host, port: port, user: user, keyPath: key)
+        let group = value("Group").flatMap { $0.isEmpty ? nil : $0 }
+        return ServerConfig(name: name, host: host, port: port, user: user, keyPath: key, group: group)
     }
 }
 
