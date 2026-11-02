@@ -1,8 +1,10 @@
 #!/bin/bash
-# Собирает ssh-conn.app и упаковывает его в установочный образ build/ssh-conn-<версия>.dmg.
+# Собирает ssh-conn.app и установщик CLI, упаковывает их в образ build/ssh-conn-<версия>.dmg.
 #
 # Переменные окружения:
-#   CODESIGN_IDENTITY — сертификат Developer ID Application для подписи (иначе ad-hoc);
+#   CODESIGN_IDENTITY — сертификат Developer ID Application для подписи приложения (иначе ad-hoc);
+#   INSTALLER_IDENTITY — сертификат Developer ID Installer для подписи пакета CLI
+#                        (обязателен при NOTARIZE=1);
 #   NOTARIZE=1, APPLE_ID, TEAM_ID, NOTARY_PASSWORD — нотаризация через xcrun notarytool.
 set -euo pipefail
 
@@ -10,12 +12,21 @@ cd "$(dirname "$0")/.."
 
 CONFIGURATION="${1:-release}"
 APP="build/ssh-conn.app"
+SIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+
+if [ "${NOTARIZE:-0}" = "1" ] && [ -z "${INSTALLER_IDENTITY:-}" ]; then
+    echo "Для нотаризации укажите INSTALLER_IDENTITY (сертификат Developer ID Installer)." >&2
+    exit 1
+fi
 
 ./Scripts/build-app.sh "$CONFIGURATION"
 
 VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")"
 DMG="build/ssh-conn-$VERSION.dmg"
-SIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+CLI_PKG="build/ssh-conn-cli-$VERSION.pkg"
+CLI_PKG_NAME="Install CLI.pkg"
+
+./Scripts/build-cli-pkg.sh "$CONFIGURATION" "$VERSION"
 
 if [ -n "$SIGN_IDENTITY" ]; then
     echo "Подписываю приложение: $SIGN_IDENTITY"
@@ -55,6 +66,7 @@ run_quiet() {
 }
 
 ditto "$APP" "$STAGE_DIR/ssh-conn.app"
+cp "$CLI_PKG" "$STAGE_DIR/$CLI_PKG_NAME"
 ln -s /Applications "$STAGE_DIR/Applications"
 
 rm -f "$DMG"
@@ -76,7 +88,7 @@ if [ -n "$SIGN_IDENTITY" ]; then
     codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
 fi
 
-# Проверяем, что образ читается и содержит приложение и ярлык Applications.
+# Проверяем, что образ читается и содержит приложение, установщик CLI и ярлык Applications.
 run_quiet hdiutil verify "$DMG"
 MOUNT_DIR="$(mktemp -d)"
 if [ "$HAS_DISKUTIL_IMAGE" = 1 ]; then
@@ -85,7 +97,9 @@ else
     run_quiet hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_DIR"
 fi
 test -d "$MOUNT_DIR/ssh-conn.app"
+test -f "$MOUNT_DIR/$CLI_PKG_NAME"
 test -L "$MOUNT_DIR/Applications"
+pkgutil --payload-files "$MOUNT_DIR/$CLI_PKG_NAME" | grep -qx "./usr/local/bin/ssh-conn"
 if [ "$HAS_DISKUTIL_IMAGE" = 1 ]; then
     run_quiet diskutil eject "$MOUNT_DIR"
 else
@@ -107,4 +121,5 @@ if [ "${NOTARIZE:-0}" = "1" ]; then
 fi
 
 echo "Готово: $DMG ($(du -h "$DMG" | cut -f1))"
-echo "Установка: откройте образ и перетащите ssh-conn в Applications."
+echo "Установка: перетащите ssh-conn в Applications, затем запустите \"$CLI_PKG_NAME\","
+echo "чтобы установить консольную утилиту ssh-conn в /usr/local/bin."

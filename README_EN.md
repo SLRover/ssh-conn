@@ -42,6 +42,8 @@ install -m 755 .build/release/ssh-conn /usr/local/bin/ssh-conn
 ```
 
 Without installing, you can run it through SwiftPM: `swift run ssh-conn list`.
+A ready-made CLI installer (`Install CLI.pkg`) is included in the DMG — see the
+"Distribution (DMG)" section.
 
 ### GUI
 
@@ -65,18 +67,25 @@ Scripts/build-dmg.sh          # build/ssh-conn-1.0.dmg
 open build/ssh-conn-1.0.dmg
 ```
 
-The script builds the app, verifies the signature and creates a compressed image
-with `ssh-conn.app` and an `Applications` shortcut; the checksum and the image
-contents are verified automatically. The `debug`/`release` argument selects the
-configuration (`release` by default).
+The script builds the app and the CLI installer, verifies the signature and
+creates a compressed image with `ssh-conn.app`, an `Applications` shortcut and
+an `Install CLI.pkg` package; the checksum and the image contents are verified
+automatically. The `debug`/`release` argument selects the configuration
+(`release` by default).
 
-By default the app is signed ad-hoc, so on another Mac Gatekeeper will warn
-about an unidentified developer. For distribution, sign the app with a
-Developer ID certificate and notarize the image (requires Xcode with
-`notarytool`):
+To install, drag `ssh-conn.app` to `Applications` and run `Install CLI.pkg` —
+it installs the `ssh-conn` command-line tool into `/usr/local/bin` (admin
+rights are required). The `ssh-conn` command is then available in the terminal.
+
+By default the app is signed ad-hoc and the CLI package is unsigned, so on
+another Mac Gatekeeper will warn about an unidentified developer. For
+distribution, sign the app with a Developer ID Application certificate, the
+package with a Developer ID Installer certificate, and notarize the image
+(requires Xcode with `notarytool`):
 
 ```bash
 CODESIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
+INSTALLER_IDENTITY="Developer ID Installer: Name (TEAMID)" \
 NOTARIZE=1 APPLE_ID="you@example.com" TEAM_ID="TEAMID" \
 NOTARY_PASSWORD="app-specific-password" \
 Scripts/build-dmg.sh
@@ -251,9 +260,12 @@ Sources/
 
 Scripts/
 ├── build-app.sh        # builds build/ssh-conn.app
-└── build-dmg.sh        # packages the app into build/ssh-conn-<version>.dmg
+├── build-cli-pkg.sh    # CLI installer build/ssh-conn-cli-<version>.pkg
+└── build-dmg.sh        # packages the app and CLI into build/ssh-conn-<version>.dmg
 ```
 
-Build: `swift build --product ssh-conn` for the CLI and `Scripts/build-app.sh` for
-the app. Running from VS Code is described in `.vscode/launch.json` (Debug and
-Release configurations for the CLI and GUI). There are no automated tests yet.
+Build: `swift build --product ssh-conn` for the CLI and `Scripts/build-app.sh`
+for the app. The CLI installer is built by `Scripts/build-cli-pkg.sh`, and the
+ready image by `Scripts/build-dmg.sh`. Running from VS Code is described in
+`.vscode/launch.json` (Debug and Release configurations for the CLI and GUI).
+There are no automated tests yet.

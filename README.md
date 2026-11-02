@@ -42,6 +42,8 @@ install -m 755 .build/release/ssh-conn /usr/local/bin/ssh-conn
 ```
 
 Без установки можно запускать через SwiftPM: `swift run ssh-conn list`.
+Готовый установщик CLI (`Install CLI.pkg`) входит в DMG — см. раздел
+«Дистрибутив (DMG)».
 
 ### GUI
 
@@ -66,18 +68,25 @@ Scripts/build-dmg.sh          # build/ssh-conn-1.0.dmg
 open build/ssh-conn-1.0.dmg
 ```
 
-Скрипт собирает приложение, проверяет подпись и создаёт сжатый образ с
-`ssh-conn.app` и ярлыком `Applications`; контрольная сумма и содержимое образа
-проверяются автоматически. Аргумент `debug`/`release` выбирает конфигурацию
-(по умолчанию `release`).
+Скрипт собирает приложение и установщик CLI, проверяет подпись и создаёт сжатый
+образ с `ssh-conn.app`, ярлыком `Applications` и пакетом `Install CLI.pkg`;
+контрольная сумма и содержимое образа проверяются автоматически. Аргумент
+`debug`/`release` выбирает конфигурацию (по умолчанию `release`).
 
-По умолчанию приложение подписано ad-hoc, поэтому на другом Mac Gatekeeper
-предупредит о неизвестном разработчике. Для распространения подпишите
-приложение сертификатом Developer ID и нотаризуйте образ (нужен Xcode с
+Установка: перетащите `ssh-conn.app` в `Applications` и запустите
+`Install CLI.pkg` — пакет установит консольную утилиту `ssh-conn`
+в `/usr/local/bin` (потребуются права администратора). После этого команда
+`ssh-conn` доступна из терминала.
+
+По умолчанию приложение подписано ad-hoc, а пакет CLI не подписан, поэтому на
+другом Mac Gatekeeper предупредит о неизвестном разработчике. Для
+распространения подпишите приложение сертификатом Developer ID Application,
+пакет — сертификатом Developer ID Installer, и нотаризуйте образ (нужен Xcode с
 `notarytool`):
 
 ```bash
 CODESIGN_IDENTITY="Developer ID Application: Имя (TEAMID)" \
+INSTALLER_IDENTITY="Developer ID Installer: Имя (TEAMID)" \
 NOTARIZE=1 APPLE_ID="you@example.com" TEAM_ID="TEAMID" \
 NOTARY_PASSWORD="app-specific-password" \
 Scripts/build-dmg.sh
@@ -253,9 +262,12 @@ Sources/
 
 Scripts/
 ├── build-app.sh        # сборка build/ssh-conn.app
-└── build-dmg.sh        # упаковка приложения в build/ssh-conn-<версия>.dmg
+├── build-cli-pkg.sh    # установщик CLI build/ssh-conn-cli-<версия>.pkg
+└── build-dmg.sh        # упаковка приложения и CLI в build/ssh-conn-<версия>.dmg
 ```
 
 Сборка: `swift build --product ssh-conn` для CLI и `Scripts/build-app.sh` для
-приложения. Запуск из VS Code описан в `.vscode/launch.json` (конфигурации Debug
+приложения. Установщик CLI собирается командой `Scripts/build-cli-pkg.sh`,
+готовый образ — `Scripts/build-dmg.sh`. Запуск из VS Code описан в
+`.vscode/launch.json` (конфигурации Debug
 и Release для CLI и GUI). Автотестов пока нет.
