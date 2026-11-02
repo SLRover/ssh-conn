@@ -11,7 +11,16 @@ struct HostListView: View {
     @State private var selection: ServerConfig.ID?
     @State private var editorDraft: HostDraft?
     @State private var pendingDeletion: ServerConfig?
-    @State private var connectionError: String?
+    @State private var isAddingGroup = false
+    @State private var pendingGroupDeletion: String?
+    @State private var errorState: ErrorState?
+
+    /// Ошибка, которую нужно показать в отдельном окне.
+    private struct ErrorState: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
 
     private var activeFilter: GroupFilter { groupFilter ?? .all }
     private var displayedHosts: [ServerConfig] { model.hosts(in: activeFilter) }
@@ -50,15 +59,15 @@ struct HostListView: View {
             }
         }
         .alert(
-            "Не удалось подключиться",
+            errorState?.title ?? "Ошибка",
             isPresented: Binding(
-                get: { connectionError != nil },
-                set: { if !$0 { connectionError = nil } }
+                get: { errorState != nil },
+                set: { if !$0 { errorState = nil } }
             )
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(connectionError ?? "")
+            Text(errorState?.message ?? "")
         }
         .confirmationDialog(
             "Удалить хост '\(pendingDeletion?.name ?? "")'?",
@@ -72,6 +81,19 @@ struct HostListView: View {
             Button("Отмена", role: .cancel) { pendingDeletion = nil }
         } message: {
             Text("Запись будет удалена из \(model.configURL.path). Действие нельзя отменить.")
+        }
+        .confirmationDialog(
+            "Удалить группу '\(pendingGroupDeletion ?? "")'?",
+            isPresented: Binding(
+                get: { pendingGroupDeletion != nil },
+                set: { if !$0 { pendingGroupDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Удалить", role: .destructive) { deletePendingGroup() }
+            Button("Отмена", role: .cancel) { pendingGroupDeletion = nil }
+        } message: {
+            Text("Объявление группы будет удалено из \(model.configURL.path).")
         }
         .onAppear { model.reload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -89,15 +111,21 @@ struct HostListView: View {
     }
 
     private var sidebar: some View {
-        List(selection: $groupFilter) {
-            row(GroupFilter.all.title, systemImage: "tray.full", count: model.count(in: .all))
-                .tag(GroupFilter.all)
+        VStack(spacing: 0) {
+            List(selection: $groupFilter) {
+                row(GroupFilter.all.title, systemImage: "tray.full", count: model.count(in: .all))
+                    .tag(GroupFilter.all)
 
-            if !model.groupNames.isEmpty {
                 Section("Группы") {
                     ForEach(model.groupNames, id: \.self) { name in
                         row(name, systemImage: "folder", count: model.count(in: .group(name)))
                             .tag(GroupFilter.group(name))
+                            .contextMenu {
+                                Button("Удалить группу…", role: .destructive) {
+                                    pendingGroupDeletion = name
+                                }
+                                .disabled(model.count(in: .group(name)) > 0)
+                            }
                     }
                 }
 
@@ -107,16 +135,30 @@ struct HostListView: View {
                             .tag(GroupFilter.ungrouped)
                     }
                 }
-            } else {
-                Section {
-                    Text("Чтобы разделить хосты, укажите группу в редакторе записи.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            }
+            .listStyle(.sidebar)
+
+            Divider()
+
+            Button {
+                isAddingGroup = true
+            } label: {
+                Label("Добавить группу", systemImage: "plus.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+        }
+        .navigationSplitViewColumnWidth(min: 170, ideal: 210)
+        .sheet(isPresented: $isAddingGroup) {
+            GroupEditorView { name in
+                let added = try model.addGroup(name)
+                groupFilter = .group(added)
             }
         }
-        .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 170, ideal: 210)
     }
 
     private func row(_ title: String, systemImage: String, count: Int) -> some View {
@@ -349,7 +391,7 @@ struct HostListView: View {
         do {
             try TerminalLauncher.connect(to: server)
         } catch {
-            connectionError = error.localizedDescription
+            errorState = ErrorState(title: "Не удалось подключиться", message: error.localizedDescription)
         }
     }
 
@@ -361,8 +403,18 @@ struct HostListView: View {
                 selection = nil
             }
         } catch {
-            connectionError = error.localizedDescription
+            errorState = ErrorState(title: "Не удалось удалить хост", message: error.localizedDescription)
         }
         pendingDeletion = nil
+    }
+
+    private func deletePendingGroup() {
+        guard let name = pendingGroupDeletion else { return }
+        do {
+            try model.deleteGroup(name)
+        } catch {
+            errorState = ErrorState(title: "Не удалось удалить группу", message: error.localizedDescription)
+        }
+        pendingGroupDeletion = nil
     }
 }

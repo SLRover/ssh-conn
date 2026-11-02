@@ -114,6 +114,44 @@ func parseBlocks(_ lines: [String]) -> [ConfigBlock] {
     return blocks
 }
 
+// MARK: - Группы
+
+/// Объявление группы отдельной строкой `Group имя` в шапке конфига.
+struct GroupDeclaration {
+    let range: Range<Int>
+    let name: String
+}
+
+/// Объявления групп — строки `Group имя` до первого блока хоста.
+/// Внутри блока такая строка задаёт группу самого хоста.
+func parseGroupDeclarations(_ lines: [String]) -> [GroupDeclaration] {
+    var declarations: [GroupDeclaration] = []
+
+    for (index, line) in lines.enumerated() {
+        guard let entry = parseEntry(line) else { continue }
+        if entry.key == "Name" { break }
+        guard entry.key == "Group" else { continue }
+
+        let name = entry.value.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { continue }
+        declarations.append(GroupDeclaration(range: index..<(index + 1), name: name))
+    }
+
+    return declarations
+}
+
+/// Проверяет и нормализует название группы из пользовательского ввода.
+public func normalizedGroupName(_ raw: String) throws -> String {
+    let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !name.isEmpty else {
+        throw SSHConnError("Укажите название группы.")
+    }
+    guard !name.contains(where: \.isNewline) else {
+        throw SSHConnError("Название группы не должно содержать переводов строки.")
+    }
+    return name
+}
+
 // MARK: - Путь к конфигурации
 
 /// Путь к файлу конфигурации; переопределяется переменной окружения `SSH_CONN_CONFIG`.

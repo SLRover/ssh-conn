@@ -96,6 +96,10 @@ The file consists of "`Key value`" blocks. Blocks are separated by a blank line,
 and lines starting with `#` are treated as comments.
 
 ```
+# groups that have no hosts yet
+Group qa
+Group databases
+
 # production
 Name prod
 Host 203.0.113.10
@@ -118,15 +122,18 @@ Key ~/.ssh/stage_key
 | `Port` | no | SSH port, `22` by default |
 | `User` | yes | user name |
 | `Key` | yes | path to the private key |
-| `Group` | no | logical group; records without the field go to "No group" |
+| `Group` | no | logical group; a `Group` line before the first block declares a group without hosts, inside a block it assigns the host to a group |
 
 Parsing details:
 
 - records missing required fields are silently skipped and never show up in `list`;
 - field order within a block is arbitrary, unknown keys are ignored but preserved
   by `edit`;
-- `Group` is optional and may contain spaces; the field is preserved on edits,
-  and an empty value in the GUI removes it from the record;
+- `Group` is optional and may contain spaces; inside a host block the field is
+  preserved on edits, and an empty value in the GUI removes it from the record;
+- group declarations (a `Group` line before the first host block) keep a group in
+  the GUI even when it has no hosts; the GUI can add such groups and delete them
+  once they are empty;
 - `~` in a key path expands to the home directory, a relative path is resolved
   from the home directory;
 - if the file does not exist, `list`, `edit` and `remove` report an error, while
@@ -169,6 +176,9 @@ does not exist, a warning is printed but the record is still saved.
 `SSH_CONN_CONFIG` variable is honored):
 
 - a sidebar with groups and counters, plus a separate "No group" item;
+- an "Add group" link at the bottom of the sidebar for creating a group that is
+  kept in the config even before it has hosts, with removal of empty groups via
+  the context menu;
 - a host table with search by name, address, group and user;
 - adding, editing and removing records with field and name-uniqueness validation;
   the editor lets you type a new group or pick an existing one, and a new record

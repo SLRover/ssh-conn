@@ -108,6 +108,7 @@ struct HostDraft: Identifiable {
 @Observable
 final class HostListModel {
     private(set) var hosts: [ServerConfig] = []
+    private(set) var declaredGroups: [String] = []
     var searchText = ""
     private(set) var loadError: String?
 
@@ -116,9 +117,9 @@ final class HostListModel {
     var configURL: URL { store.url }
     var configExists: Bool { store.exists }
 
-    /// Имена групп в порядке сортировки; группы существуют, пока в них есть хосты.
+    /// Группы из объявлений в конфиге и из записей хостов, по алфавиту.
     var groupNames: [String] {
-        Set(hosts.compactMap(\.group))
+        Set(declaredGroups + hosts.compactMap(\.group))
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
@@ -142,14 +143,37 @@ final class HostListModel {
         loadError = nil
         guard store.exists else {
             hosts = []
+            declaredGroups = []
             return
         }
         do {
             hosts = try store.servers()
+            declaredGroups = try store.declaredGroups()
         } catch {
             hosts = []
+            declaredGroups = []
             loadError = error.localizedDescription
         }
+    }
+
+    /// Добавляет группу, не привязанную к хостам, и возвращает её название.
+    @discardableResult
+    func addGroup(_ name: String) throws -> String {
+        let normalized = try normalizedGroupName(name)
+        guard !groupNames.contains(normalized) else {
+            throw SSHConnError("Группа '\(normalized)' уже существует.")
+        }
+        try store.addGroup(named: normalized)
+        reload()
+        return normalized
+    }
+
+    func deleteGroup(_ name: String) throws {
+        guard count(in: .group(name)) == 0 else {
+            throw SSHConnError("В группе '\(name)' есть хосты, поэтому удалить её нельзя.")
+        }
+        try store.removeGroup(named: name)
+        reload()
     }
 
     func save(_ draft: HostDraft) throws {
