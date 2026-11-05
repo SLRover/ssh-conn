@@ -14,6 +14,8 @@ func usage(_ progName: String) -> String {
       \(progName) add <имя> [опции]       — добавить сервер
       \(progName) remove <имя> [--force]  — удалить сервер
       \(progName) edit <имя> [опции]      — изменить сервер
+      \(progName) completion [оболочка]   — скрипт автодополнения (zsh, bash, fish)
+      \(progName) completion install      — включить автодополнение в конфиге оболочки
       \(progName) help                    — показать эту справку
 
     Опции add и edit:

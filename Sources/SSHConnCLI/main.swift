@@ -25,6 +25,10 @@ func runCLI(progName: String, arguments: [String]) throws {
         try removeServer(arguments: rest)
     case "edit":
         try editServer(arguments: rest)
+    case "completion":
+        try runCompletion(progName: progName, arguments: rest)
+    case "__complete":
+        completeCandidates(arguments: rest)
     default:
         guard !command.hasPrefix("-") else {
             throw SSHConnError("Неизвестная опция '\(command)'. Справка: \(progName) --help")

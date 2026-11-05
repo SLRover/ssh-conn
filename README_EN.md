@@ -25,6 +25,7 @@ $ ssh-conn prod
   table, adding, editing and removing records, connecting in Terminal;
 - connecting by server name;
 - `add` / `edit` / `remove` — record management, including interactive mode;
+- Tab completion of server names in zsh, bash and fish;
 - a default port (22) for records without a `Port` field;
 - comments and unknown keys are preserved in the configuration file on edits.
 
@@ -156,6 +157,8 @@ ssh-conn list                    — list servers
 ssh-conn add <name> [options]    — add a server
 ssh-conn remove <name> [--force] — remove a server
 ssh-conn edit <name> [options]   — edit a server
+ssh-conn completion [shell]      — completion script (zsh, bash, fish)
+ssh-conn completion install      — enable shell completion
 ssh-conn help                    — show help
 ```
 
@@ -178,6 +181,45 @@ Values can also be passed as `--port=2222`. If a terminal is available, missing
 `add` and `edit` values are prompted for interactively; without a terminal, a
 missing required field is an error (convenient for scripts). If the key file
 does not exist, a warning is printed but the record is still saved.
+
+## Shell completion
+
+Tab completes server names, commands, options and group names:
+
+```
+$ ssh-conn produ<Tab>
+$ ssh-conn production
+```
+
+Enable completion for the current shell (detected from `$SHELL`):
+
+```bash
+ssh-conn completion install
+```
+
+Or set it up manually for a specific shell:
+
+```bash
+# zsh: the eval line is added to ~/.zshrc
+echo 'eval "$(ssh-conn completion zsh)"' >> ~/.zshrc
+
+# bash: the eval line is added to ~/.bash_profile
+echo 'eval "$(ssh-conn completion bash)"' >> ~/.bash_profile
+
+# fish: the completion file is picked up automatically
+ssh-conn completion fish > ~/.config/fish/completions/ssh-conn.fish
+```
+
+The `completion install [zsh|bash|fish]` command adds a managed block between
+`# >>> ssh-conn completion >>>` and `# <<< ssh-conn completion <<<` markers to
+`~/.zshrc` or `~/.bash_profile`; running it again updates the block instead of
+duplicating it. For fish it writes
+`~/.config/fish/completions/ssh-conn.fish`. After installing, open a new
+terminal or `source` the modified file.
+
+Without installing, `ssh-conn completion zsh|bash|fish` prints the script, and
+the hidden `ssh-conn __complete [prefix]` command prints the candidates for the
+shell.
 
 ## Graphical interface
 
@@ -250,7 +292,8 @@ Sources/
 │   └── SSH.swift           # launching ssh from the CLI
 ├── SSHConnCLI/         # command-line tool
 │   ├── main.swift          # entry point and command parsing
-│   └── CLI.swift           # help, option parsing, commands, table output
+│   ├── CLI.swift           # help, option parsing, commands, table output
+│   └── Completion.swift    # completion for zsh, bash and fish
 └── SSHConnGUI/         # SwiftUI app
     ├── SSHConnGUIApp.swift # app entry point
     ├── HostListModel.swift # list state and record validation
